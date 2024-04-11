@@ -1,5 +1,3 @@
-// use std::f32::consts::PI;
-
 use bevy::{prelude::*, window::PrimaryWindow};
 
 #[derive(Component)]
@@ -7,15 +5,6 @@ struct GameCamera;
 
 #[derive(Component)]
 struct Player;
-
-// fn spin(mut query: Query<&mut Transform, With<Player>>, time: Res<Time>) {
-//     let mut player_transform = query.single_mut();
-
-//     player_transform.rotate_axis(
-//         Vec3::new(0.0, 0.0, 1.0),
-//         PI / 180.0 * 30.0 * time.delta_seconds(),
-//     );
-// }
 
 fn player_controller(
     mut query: Query<&mut Transform, With<Player>>,
@@ -25,9 +14,9 @@ fn player_controller(
 ) {
     let mut player_transform = query.single_mut();
     let mut direction = Vec3::new(0.0, 0.0, 0.0);
-    
+
     let player_speed = 100.0;
-    let window  = q_windows.single();
+    let window = q_windows.single();
 
     if let Some(position) = window.cursor_position() {
         let world_position_x = position.x - window.width() / 2.0;
@@ -35,13 +24,17 @@ fn player_controller(
 
         direction.x = world_position_x - player_transform.translation.x;
         direction.y = world_position_y - player_transform.translation.y;
+
         direction = direction.normalize();
+        
+        player_transform.rotation = Quat::from_rotation_arc(Vec3::Y, direction);
     }
 
     if keys.just_pressed(KeyCode::Space) {}
 
     if keys.pressed(KeyCode::W) {
-        player_transform.translation = player_transform.translation + (direction * player_speed * time.delta_seconds());
+        player_transform.translation =
+            player_transform.translation + (direction * player_speed * time.delta_seconds());
     }
 }
 
