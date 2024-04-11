@@ -1,12 +1,18 @@
-use std::f32::consts::PI;
-
 use bevy::{prelude::*, window::PrimaryWindow};
+use rand::prelude::*;
+use std::f32::consts::PI;
 
 #[derive(Component)]
 struct GameCamera;
 
 #[derive(Component)]
 struct Player;
+
+#[derive(Component)]
+struct SpawnTimer {
+    value: f32,
+    cooldown: f32,
+}
 
 #[derive(Component)]
 struct Target {
@@ -191,6 +197,47 @@ fn player_move_system(
     }
 }
 
+fn asteroid_spawner_system(
+    mut commands: Commands,
+    mut q_spawn_timer: Query<&mut SpawnTimer>,
+    q_windows: Query<&Window, With<PrimaryWindow>>,
+    asset_server: Res<AssetServer>,
+) {
+    let mut spawn_timer = q_spawn_timer.single_mut();
+    let window = q_windows.single();
+
+    let width = window.width() / 2.0;
+    let height = window.height() / 2.0;
+
+    let mut rng = rand::thread_rng();
+
+    if spawn_timer.value <= 0.0 {
+        commands.spawn((
+            SpriteBundle {
+                transform: Transform {
+                    translation: Vec3::new(
+                        rng.gen::<f32>() * width,
+                        rng.gen::<f32>() * height,
+                        0.0,
+                    ),
+                    scale: (Vec3::splat(0.1)),
+                    ..default()
+                },
+                texture: asset_server.load("asteroid.png"),
+                ..Default::default()
+            },
+            Asteroid,
+        ));
+        
+        spawn_timer.value = spawn_timer.cooldown;
+    }
+}
+
+fn spawn_timer_update_system(mut q_spawn_timer: Query<&mut SpawnTimer>, time: Res<Time>) {
+    let mut timer = q_spawn_timer.single_mut();
+    timer.value -= time.delta_seconds();
+}
+
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn((Camera2dBundle::default(), GameCamera));
     commands.spawn((
@@ -227,6 +274,11 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         },
         Background,
     ));
+
+    commands.spawn(SpawnTimer {
+        value: 0.0,
+        cooldown: 2.0,
+    });
 }
 
 fn main() {
@@ -244,6 +296,8 @@ fn main() {
                 player_target_system,
                 player_shoot_system,
                 player_wrap_system,
+                asteroid_spawner_system,
+                spawn_timer_update_system,
                 apply_velocity_system,
             ),
         )
