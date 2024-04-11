@@ -19,6 +19,9 @@ struct Velocity {
 }
 
 #[derive(Component)]
+struct Background;
+
+#[derive(Component)]
 struct Weapon {
     name: String,
     rate_of_fire: f32,
@@ -210,6 +213,19 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             direction: Vec3::ZERO,
         },
         Velocity { value: Vec3::ZERO },
+    ));
+
+    commands.spawn((
+        SpriteBundle {
+            transform: Transform {
+                translation: Vec3::new(0.0, 0.0, -1.0),
+                scale: (Vec3::new(1.0, 1.0, 1.0)),
+                ..default()
+            },
+            texture: asset_server.load("starfield.png"),
+            ..default()
+        },
+        Background,
     ));
 }
 
