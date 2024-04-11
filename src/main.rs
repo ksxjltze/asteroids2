@@ -1,6 +1,6 @@
 use bevy::{prelude::*, window::PrimaryWindow};
 use rand::prelude::*;
-use std::f32::consts::PI;
+use std::{f32::consts::PI, vec};
 
 #[derive(Component)]
 struct GameCamera;
@@ -35,7 +35,21 @@ struct Weapon {
 }
 
 #[derive(Component)]
+struct Circle {
+    center: Vec2,
+    radius: f32,
+}
+
+#[derive(Component)]
 struct Asteroid;
+
+#[derive(Event)]
+struct CollisionEvent(Entity, Entity);
+impl PartialEq for CollisionEvent {
+    fn eq(&self, other: &Self) -> bool {
+        (self.0 == other.0 && self.1 == other.1) || (self.0 == other.1 && self.1 == other.0)
+    }
+}
 
 fn get_player_direction(player_transform: &Transform, window: &Window) -> Option<Vec3> {
     if let Some(position) = window.cursor_position() {
@@ -51,6 +65,35 @@ fn get_player_direction(player_transform: &Transform, window: &Window) -> Option
     }
 
     None
+}
+
+fn circle_collision_system(
+    q_circle: Query<(Entity, &Circle)>,
+    mut ev_collision: EventWriter<CollisionEvent>,
+) {
+    let mut collisions: Vec<CollisionEvent> = Vec::new();
+
+    q_circle.for_each(|circle| {
+        q_circle.for_each(|other| {
+            if circle.0 == other.0 {
+                return;
+            }
+
+            let distance = (circle.1.center - other.1.center).length();
+            if distance < circle.1.radius + other.1.radius {
+                let event = CollisionEvent(circle.0, other.0);
+                if collisions.contains(&event) {
+                    return;
+                }
+
+                collisions.push(event);
+            }
+        });
+    });
+
+    for collision in collisions {
+        ev_collision.send(collision);
+    }
 }
 
 fn apply_velocity_system(mut q_velocity: Query<(&Velocity, &mut Transform)>, time: Res<Time>) {
@@ -107,6 +150,7 @@ fn player_shoot_system(
     let direction: Vec3;
 
     let bullet_speed = 1000.0;
+    let bullet_size = 1.0;
     let mut weapon;
 
     match player {
@@ -128,7 +172,7 @@ fn player_shoot_system(
             SpriteBundle {
                 transform: Transform {
                     translation: position,
-                    scale: (Vec3::splat(1.0)),
+                    scale: (Vec3::splat(bullet_size)),
                     ..default()
                 },
                 texture: asset_server.load("bullet.png"),
@@ -137,6 +181,10 @@ fn player_shoot_system(
             Asteroid,
             Velocity {
                 value: direction.normalize() * bullet_speed,
+            },
+            Circle {
+                center: Vec2::new(position.x, position.y),
+                radius: bullet_size,
             },
         ));
 
@@ -206,31 +254,55 @@ fn asteroid_spawner_system(
     let mut spawn_timer = q_spawn_timer.single_mut();
     let window = q_windows.single();
 
-    let width = window.width() / 2.0;
-    let height = window.height() / 2.0;
+    let width = window.width();
+    let height = window.height();
 
     let mut rng = rand::thread_rng();
+    let pos_x = rng.gen::<f32>() * width - width / 2.0;
+    let pos_y = rng.gen::<f32>() * height - height / 2.0;
+
+    let asteroid_texture = asset_server.load("asteroid.png");
+    let asteroid_size = 28.0;
 
     if spawn_timer.value <= 0.0 {
         commands.spawn((
             SpriteBundle {
                 transform: Transform {
-                    translation: Vec3::new(
-                        rng.gen::<f32>() * width,
-                        rng.gen::<f32>() * height,
-                        0.0,
-                    ),
-                    scale: (Vec3::splat(0.1)),
+                    translation: Vec3::new(pos_x, pos_y, 0.0),
+                    scale: (Vec3::splat(0.1)), //temp
                     ..default()
                 },
-                texture: asset_server.load("asteroid.png"),
+                texture: asteroid_texture,
                 ..Default::default()
             },
             Asteroid,
+            Circle {
+                center: Vec2::new(pos_x, pos_y),
+                radius: asteroid_size,
+            },
         ));
-        
+
         spawn_timer.value = spawn_timer.cooldown;
     }
+}
+
+fn asteroid_hit_system(mut ev_collision: EventReader<CollisionEvent>, mut commands: Commands) {
+    for ev in ev_collision.read() {
+        if let Some(mut entity) = commands.get_entity(ev.0) {
+            entity.despawn();
+        }
+
+        if let Some(mut entity) = commands.get_entity(ev.1) {
+            entity.despawn();
+        }
+    }
+}
+
+fn circle_update_system(mut q_circle: Query<(&mut Circle, &Transform)>) {
+    q_circle.for_each_mut(|mut bundle| {
+        bundle.0.center.x = bundle.1.translation.x;
+        bundle.0.center.y = bundle.1.translation.y;
+    })
 }
 
 fn spawn_timer_update_system(mut q_spawn_timer: Query<&mut SpawnTimer>, time: Res<Time>) {
@@ -289,6 +361,7 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
+        .add_event::<CollisionEvent>()
         .add_systems(
             Update,
             (
@@ -299,6 +372,9 @@ fn main() {
                 asteroid_spawner_system,
                 spawn_timer_update_system,
                 apply_velocity_system,
+                circle_update_system,
+                circle_collision_system,
+                asteroid_hit_system,
             ),
         )
         .run();
