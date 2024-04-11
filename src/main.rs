@@ -53,6 +53,39 @@ fn apply_velocity_system(mut q_velocity: Query<(&Velocity, &mut Transform)>, tim
     })
 }
 
+fn player_wrap_system(
+    mut q_player_transform: Query<&mut Transform, With<Player>>,
+    q_windows: Query<&Window, With<PrimaryWindow>>,
+) {
+    let result = q_player_transform.get_single_mut();
+    let window = q_windows.single();
+
+    match result {
+        Ok(mut transform) => {
+            let width = window.width();
+            let height = window.height();
+
+            let offset_x = -width / 2.0;
+            let offset_y = -height / 2.0;
+
+            let position = transform.translation - Vec3::new(offset_x, offset_y, 0.0);
+
+            if position.x < 0.0 {
+                transform.translation.x = width + offset_x;
+            } else if position.x > width {
+                transform.translation.x = 0.0 + offset_x;
+            }
+
+            if position.y < 0.0 {
+                transform.translation.y = height + offset_y;
+            } else if position.y > height {
+                transform.translation.y = 0.0 + offset_y;
+            }
+        }
+        Err(..) => return,
+    }
+}
+
 fn player_shoot_system(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -128,7 +161,7 @@ fn player_move_system(
 
     let player_acceleration = 100.0;
     let player_strafe_speed = 100.0;
-    
+
     let movement = direction * player_acceleration * time.delta_seconds();
 
     player_transform.rotation = Quat::from_rotation_arc(Vec3::Y, direction);
@@ -143,8 +176,8 @@ fn player_move_system(
         player_velocity.value += movement;
     }
 
-    let strafe_movement = Quat::mul_vec3(Quat::from_rotation_z(PI / 2.0), movement).normalize()
-        * player_strafe_speed;
+    let strafe_movement =
+        Quat::mul_vec3(Quat::from_rotation_z(PI / 2.0), movement).normalize() * player_strafe_speed;
 
     if keys.just_pressed(KeyCode::A) {
         player_velocity.value += strafe_movement;
@@ -153,7 +186,6 @@ fn player_move_system(
     if keys.just_pressed(KeyCode::D) {
         player_velocity.value -= strafe_movement;
     }
-    
 }
 
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -195,7 +227,8 @@ fn main() {
                 player_move_system,
                 player_target_system,
                 player_shoot_system,
-                apply_velocity_system
+                player_wrap_system,
+                apply_velocity_system,
             ),
         )
         .run();
