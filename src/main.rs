@@ -1,18 +1,6 @@
-use std::f32::consts::PI;
+// use std::f32::consts::PI;
 
-use bevy::prelude::*;
-
-#[derive(Component)]
-struct Asteroid;
-
-#[derive(Component)]
-struct Weapon;
-
-#[derive(Component)]
-struct Name(String);
-
-#[derive(Resource)]
-struct ListTimer(Timer);
+use bevy::{prelude::*, window::PrimaryWindow};
 
 #[derive(Component)]
 struct GameCamera;
@@ -20,47 +8,53 @@ struct GameCamera;
 #[derive(Component)]
 struct Player;
 
-pub struct WeaponsPlugin;
-impl Plugin for WeaponsPlugin {
-    fn build(&self, app: &mut App) {
-        app.insert_resource(ListTimer(Timer::from_seconds(2.0, TimerMode::Once)))
-            .add_systems(Startup, add_weapons)
-            .add_systems(Update, list_weapons);
-    }
-}
+// fn spin(mut query: Query<&mut Transform, With<Player>>, time: Res<Time>) {
+//     let mut player_transform = query.single_mut();
 
-fn add_weapons(mut commands: Commands) {
-    commands.spawn((Weapon, Name("Railgun".to_string())));
-}
+//     player_transform.rotate_axis(
+//         Vec3::new(0.0, 0.0, 1.0),
+//         PI / 180.0 * 30.0 * time.delta_seconds(),
+//     );
+// }
 
-fn list_weapons(time: Res<Time>, mut timer: ResMut<ListTimer>, query: Query<&Name, With<Weapon>>) {
-    if timer.0.tick(time.delta()).just_finished() {
-        println!("Weapons:");
-        for name in &query {
-            println!("- {}", name.0);
-        }
-    }
-}
-
-fn spin(mut query: Query<&mut Transform, With<Player>>, time: Res<Time>){
+fn player_controller(
+    mut query: Query<&mut Transform, With<Player>>,
+    time: Res<Time>,
+    keys: Res<Input<KeyCode>>,
+    q_windows: Query<&Window, With<PrimaryWindow>>,
+) {
     let mut player_transform = query.single_mut();
+    let mut direction = Vec3::new(0.0, 0.0, 0.0);
+    
+    let player_speed = 100.0;
+    let window  = q_windows.single();
 
-    player_transform.rotate_axis(Vec3::new(0.0, 0.0, 1.0), PI / 180.0 * 30.0 * time.delta_seconds());
+    if let Some(position) = window.cursor_position() {
+        let world_position_x = position.x - window.width() / 2.0;
+        let world_position_y = -(position.y - window.height() / 2.0);
+
+        direction.x = world_position_x - player_transform.translation.x;
+        direction.y = world_position_y - player_transform.translation.y;
+        direction = direction.normalize();
+    }
+
+    if keys.just_pressed(KeyCode::Space) {}
+
+    if keys.pressed(KeyCode::W) {
+        player_transform.translation = player_transform.translation + (direction * player_speed * time.delta_seconds());
+    }
 }
 
-fn setup(mut commands: Commands) {
+fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn((Camera2dBundle::default(), GameCamera));
     commands.spawn((
         SpriteBundle {
             transform: Transform {
                 translation: Vec3::new(0.0, 0.0, 0.0),
-                scale: (Vec3::new(100.0, 100.0, 1.0)),
+                scale: (Vec3::new(1.0, 1.0, 1.0)),
                 ..default()
             },
-            sprite: Sprite {
-                color: Color::rgb(0.3, 0.3, 0.7),
-                ..default()
-            },
+            texture: asset_server.load("player.png"),
             ..default()
         },
         Player,
@@ -73,8 +67,8 @@ fn main() {
     console_error_panic_hook::set_once();
 
     App::new()
-        .add_plugins((DefaultPlugins, WeaponsPlugin))
+        .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
-        .add_systems(Update, spin)
+        .add_systems(Update, player_controller)
         .run();
 }
