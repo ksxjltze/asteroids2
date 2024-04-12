@@ -34,6 +34,11 @@ struct Weapon {
     cooldown_timer: f32,
 }
 
+#[derive(Resource)]
+struct ImageManager {
+    images: Vec<Handle<Image>>,
+}
+
 #[derive(Component)]
 struct Destroyed;
 
@@ -301,7 +306,10 @@ fn asteroid_hit_system(mut ev_collision: EventReader<CollisionEvent>, mut comman
     }
 }
 
-fn asteroid_destroy_system(mut q_destroyed: Query<(Entity, &mut Destroyed)>, mut commands: Commands) {
+fn asteroid_destroy_system(
+    mut q_destroyed: Query<(Entity, &mut Destroyed)>,
+    mut commands: Commands,
+) {
     q_destroyed.for_each_mut(|destroyed| {
         if let Some(mut entity) = commands.get_entity(destroyed.0) {
             entity.despawn();
@@ -321,7 +329,7 @@ fn spawn_timer_update_system(mut q_spawn_timer: Query<&mut SpawnTimer>, time: Re
     timer.value -= time.delta_seconds();
 }
 
-fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn setup_system(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn((Camera2dBundle::default(), GameCamera));
     commands.spawn((
         SpriteBundle {
@@ -364,6 +372,20 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     });
 }
 
+fn load_assets_system(mut image_manager: ResMut<ImageManager>, asset_server: Res<AssetServer>) {
+    let background_image_asset: Handle<Image> = asset_server.load("starfield.png");
+    let player_sprite_asset: Handle<Image> = asset_server.load("player.png");
+    let asteroid_sprite_asset: Handle<Image> = asset_server.load("asteroid.png");
+    let bullet_sprite_asset: Handle<Image> = asset_server.load("bullet.png");
+
+    image_manager.images = vec![
+        background_image_asset,
+        player_sprite_asset,
+        asteroid_sprite_asset,
+        bullet_sprite_asset,
+    ];
+}
+
 fn main() {
     // When building for WASM, print panics to the browser console
     #[cfg(target_arch = "wasm32")]
@@ -371,7 +393,8 @@ fn main() {
 
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_systems(Startup, setup)
+        .insert_resource::<ImageManager>(ImageManager { images: Vec::new() })
+        .add_systems(Startup, (setup_system, load_assets_system))
         .add_event::<CollisionEvent>()
         .add_systems(
             Update,
@@ -385,9 +408,9 @@ fn main() {
                 apply_velocity_system,
                 circle_update_system,
                 circle_collision_system,
-                asteroid_hit_system,
-                asteroid_destroy_system
             ),
         )
+        .add_systems(PostUpdate, asteroid_hit_system)
+        .add_systems(Last, asteroid_destroy_system)
         .run();
 }
