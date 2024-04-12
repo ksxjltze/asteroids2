@@ -1,6 +1,6 @@
 use bevy::{prelude::*, utils::HashMap, window::PrimaryWindow};
 use rand::prelude::*;
-use std::f32::consts::PI;
+use std::{f32::consts::PI, ops::Index};
 
 #[derive(Component)]
 struct GameCamera;
@@ -45,6 +45,19 @@ enum ImageType {
 #[derive(Resource)]
 struct ImageManager {
     images: HashMap<ImageType, Handle<Image>>,
+}
+
+impl ImageManager {
+    fn get(&self, key: ImageType) -> &Handle<Image> {
+        return &self.images[&key];
+    }
+}
+
+impl Index<ImageType> for ImageManager {
+    type Output = Handle<Image>;
+    fn index<>(&self, i: ImageType) -> &Handle<Image> {
+        &self.images[&i]
+    }
 }
 
 #[derive(Component)]
@@ -337,7 +350,7 @@ fn spawn_timer_update_system(mut q_spawn_timer: Query<&mut SpawnTimer>, time: Re
     timer.value -= time.delta_seconds();
 }
 
-fn setup_system(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn setup_system(mut commands: Commands, image_manager: Res<ImageManager>) {
     commands.spawn((Camera2dBundle::default(), GameCamera));
     commands.spawn((
         SpriteBundle {
@@ -346,7 +359,7 @@ fn setup_system(mut commands: Commands, asset_server: Res<AssetServer>) {
                 scale: (Vec3::new(1.0, 1.0, 1.0)),
                 ..default()
             },
-            texture: asset_server.load("player.png"),
+            texture: image_manager[ImageType::Player].clone_weak(),
             ..default()
         },
         Player,
@@ -368,7 +381,7 @@ fn setup_system(mut commands: Commands, asset_server: Res<AssetServer>) {
                 scale: (Vec3::new(1.0, 1.0, 1.0)),
                 ..default()
             },
-            texture: asset_server.load("starfield.png"),
+            texture: image_manager[ImageType::Background].clone_weak(),
             ..default()
         },
         Background,
@@ -400,7 +413,8 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .insert_resource::<ImageManager>(ImageManager { images: HashMap::new() })
-        .add_systems(Startup, (setup_system, load_assets_system))
+        .add_systems(PreStartup, load_assets_system)
+        .add_systems(Startup, setup_system)
         .add_event::<CollisionEvent>()
         .add_systems(
             Update,
