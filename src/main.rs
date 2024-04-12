@@ -35,6 +35,9 @@ struct Weapon {
 }
 
 #[derive(Component)]
+struct Destroyed;
+
+#[derive(Component)]
 struct Circle {
     center: Vec2,
     radius: f32,
@@ -289,13 +292,21 @@ fn asteroid_spawner_system(
 fn asteroid_hit_system(mut ev_collision: EventReader<CollisionEvent>, mut commands: Commands) {
     for ev in ev_collision.read() {
         if let Some(mut entity) = commands.get_entity(ev.0) {
-            entity.despawn();
+            entity.insert(Destroyed);
         }
 
         if let Some(mut entity) = commands.get_entity(ev.1) {
-            entity.despawn();
+            entity.insert(Destroyed);
         }
     }
+}
+
+fn asteroid_destroy_system(mut q_destroyed: Query<(Entity, &mut Destroyed)>, mut commands: Commands) {
+    q_destroyed.for_each_mut(|destroyed| {
+        if let Some(mut entity) = commands.get_entity(destroyed.0) {
+            entity.despawn();
+        }
+    })
 }
 
 fn circle_update_system(mut q_circle: Query<(&mut Circle, &Transform)>) {
@@ -375,6 +386,7 @@ fn main() {
                 circle_update_system,
                 circle_collision_system,
                 asteroid_hit_system,
+                asteroid_destroy_system
             ),
         )
         .run();
