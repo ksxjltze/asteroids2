@@ -1,6 +1,6 @@
-use bevy::{prelude::*, window::PrimaryWindow};
+use bevy::{prelude::*, utils::HashMap, window::PrimaryWindow};
 use rand::prelude::*;
-use std::{f32::consts::PI, vec};
+use std::f32::consts::PI;
 
 #[derive(Component)]
 struct GameCamera;
@@ -34,9 +34,17 @@ struct Weapon {
     cooldown_timer: f32,
 }
 
+#[derive(Eq, Hash, PartialEq)]
+enum ImageType {
+    Player,
+    Asteroid,
+    Bullet,
+    Background
+}
+
 #[derive(Resource)]
 struct ImageManager {
-    images: Vec<Handle<Image>>,
+    images: HashMap<ImageType, Handle<Image>>,
 }
 
 #[derive(Component)]
@@ -373,17 +381,15 @@ fn setup_system(mut commands: Commands, asset_server: Res<AssetServer>) {
 }
 
 fn load_assets_system(mut image_manager: ResMut<ImageManager>, asset_server: Res<AssetServer>) {
-    let background_image_asset: Handle<Image> = asset_server.load("starfield.png");
     let player_sprite_asset: Handle<Image> = asset_server.load("player.png");
     let asteroid_sprite_asset: Handle<Image> = asset_server.load("asteroid.png");
     let bullet_sprite_asset: Handle<Image> = asset_server.load("bullet.png");
+    let background_image_asset: Handle<Image> = asset_server.load("starfield.png");
 
-    image_manager.images = vec![
-        background_image_asset,
-        player_sprite_asset,
-        asteroid_sprite_asset,
-        bullet_sprite_asset,
-    ];
+    image_manager.images.insert(ImageType::Player, player_sprite_asset);
+    image_manager.images.insert(ImageType::Asteroid, asteroid_sprite_asset);
+    image_manager.images.insert(ImageType::Bullet, bullet_sprite_asset);
+    image_manager.images.insert(ImageType::Background, background_image_asset);
 }
 
 fn main() {
@@ -393,7 +399,7 @@ fn main() {
 
     App::new()
         .add_plugins(DefaultPlugins)
-        .insert_resource::<ImageManager>(ImageManager { images: Vec::new() })
+        .insert_resource::<ImageManager>(ImageManager { images: HashMap::new() })
         .add_systems(Startup, (setup_system, load_assets_system))
         .add_event::<CollisionEvent>()
         .add_systems(
