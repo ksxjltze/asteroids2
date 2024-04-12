@@ -1,6 +1,7 @@
-use bevy::{prelude::*, utils::HashMap, window::PrimaryWindow};
+use bevy::{asset::LoadState, prelude::*, utils::HashMap, window::PrimaryWindow};
+use core::time;
 use rand::prelude::*;
-use std::{f32::consts::PI, ops::Index};
+use std::{f32::consts::PI, ops::Index, thread};
 
 #[derive(Component)]
 struct GameCamera;
@@ -39,24 +40,36 @@ enum ImageType {
     Player,
     Asteroid,
     Bullet,
-    Background
+    Background,
+}
+
+struct Sprite {
+    image_handle: Handle<Image>,
+    width: u32,
+    height: u32,
+}
+
+impl Sprite {
+    fn handle(&self) -> Handle<Image> {
+        return self.image_handle.clone_weak();
+    }
 }
 
 #[derive(Resource)]
 struct ImageManager {
-    images: HashMap<ImageType, Handle<Image>>,
+    images: HashMap<ImageType, Sprite>,
 }
 
 impl ImageManager {
-    fn get(&self, key: ImageType) -> &Handle<Image> {
+    fn get(&self, key: ImageType) -> &Sprite {
         return &self.images[&key];
     }
 }
 
 impl Index<ImageType> for ImageManager {
-    type Output = Handle<Image>;
-    fn index<>(&self, i: ImageType) -> &Handle<Image> {
-        &self.images[&i]
+    type Output = Sprite;
+    fn index(&self, key: ImageType) -> &Sprite {
+        self.get(key)
     }
 }
 
@@ -169,7 +182,7 @@ fn player_wrap_system(
 
 fn player_shoot_system(
     mut commands: Commands,
-    asset_server: Res<AssetServer>,
+    image_manager: Res<ImageManager>,
     mut q_player: Query<(&Transform, &Target, &mut Weapon), With<Player>>,
     time: Res<Time>,
     mouse: Res<Input<MouseButton>>,
@@ -197,6 +210,10 @@ fn player_shoot_system(
     weapon.cooldown_timer -= time.delta_seconds();
 
     if mouse.pressed(MouseButton::Left) && weapon.cooldown_timer <= 0.0 {
+        let bullet_sprite = &image_manager[ImageType::Bullet];
+        let bullet_sprite_width = bullet_sprite.width as f32;
+        let bullet_sprite_height = bullet_sprite.height as f32;
+
         commands.spawn((
             SpriteBundle {
                 transform: Transform {
@@ -204,7 +221,7 @@ fn player_shoot_system(
                     scale: (Vec3::splat(bullet_size)),
                     ..default()
                 },
-                texture: asset_server.load("bullet.png"),
+                texture: bullet_sprite.handle(),
                 ..default()
             },
             Asteroid,
@@ -213,7 +230,7 @@ fn player_shoot_system(
             },
             Circle {
                 center: Vec2::new(position.x, position.y),
-                radius: bullet_size,
+                radius: (bullet_sprite_width + bullet_sprite_height) / 4.0,
             },
         ));
 
@@ -278,36 +295,37 @@ fn asteroid_spawner_system(
     mut commands: Commands,
     mut q_spawn_timer: Query<&mut SpawnTimer>,
     q_windows: Query<&Window, With<PrimaryWindow>>,
-    asset_server: Res<AssetServer>,
+    image_manager: Res<ImageManager>,
 ) {
     let mut spawn_timer = q_spawn_timer.single_mut();
     let window = q_windows.single();
 
-    let width = window.width();
-    let height = window.height();
+    let window_width = window.width();
+    let window_height = window.height();
 
     let mut rng = rand::thread_rng();
-    let pos_x = rng.gen::<f32>() * width - width / 2.0;
-    let pos_y = rng.gen::<f32>() * height - height / 2.0;
+    let pos_x = rng.gen::<f32>() * window_width - window_width / 2.0;
+    let pos_y = rng.gen::<f32>() * window_height - window_height / 2.0;
 
-    let asteroid_texture = asset_server.load("asteroid.png");
-    let asteroid_size = 28.0;
+    let asteroid_sprite = &image_manager[ImageType::Asteroid];
+    let asteroid_sprite_width = asteroid_sprite.width as f32;
+    let asteroid_sprite_height = asteroid_sprite.height as f32;
 
     if spawn_timer.value <= 0.0 {
         commands.spawn((
             SpriteBundle {
                 transform: Transform {
                     translation: Vec3::new(pos_x, pos_y, 0.0),
-                    scale: (Vec3::splat(0.1)), //temp
+                    scale: (Vec3::splat(1.0)),
                     ..default()
                 },
-                texture: asteroid_texture,
+                texture: asteroid_sprite.handle(),
                 ..Default::default()
             },
             Asteroid,
             Circle {
                 center: Vec2::new(pos_x, pos_y),
-                radius: asteroid_size,
+                radius: (asteroid_sprite_width + asteroid_sprite_height) / 4.0,
             },
         ));
 
@@ -359,7 +377,7 @@ fn setup_system(mut commands: Commands, image_manager: Res<ImageManager>) {
                 scale: (Vec3::new(1.0, 1.0, 1.0)),
                 ..default()
             },
-            texture: image_manager[ImageType::Player].clone_weak(),
+            texture: image_manager[ImageType::Player].handle(),
             ..default()
         },
         Player,
@@ -381,7 +399,7 @@ fn setup_system(mut commands: Commands, image_manager: Res<ImageManager>) {
                 scale: (Vec3::new(1.0, 1.0, 1.0)),
                 ..default()
             },
-            texture: image_manager[ImageType::Background].clone_weak(),
+            texture: image_manager[ImageType::Background].handle(),
             ..default()
         },
         Background,
@@ -399,10 +417,63 @@ fn load_assets_system(mut image_manager: ResMut<ImageManager>, asset_server: Res
     let bullet_sprite_asset: Handle<Image> = asset_server.load("bullet.png");
     let background_image_asset: Handle<Image> = asset_server.load("starfield.png");
 
-    image_manager.images.insert(ImageType::Player, player_sprite_asset);
-    image_manager.images.insert(ImageType::Asteroid, asteroid_sprite_asset);
-    image_manager.images.insert(ImageType::Bullet, bullet_sprite_asset);
-    image_manager.images.insert(ImageType::Background, background_image_asset);
+    image_manager.images.insert(
+        ImageType::Player,
+        Sprite {
+            image_handle: player_sprite_asset,
+            width: 0,
+            height: 0,
+        },
+    );
+    image_manager.images.insert(
+        ImageType::Asteroid,
+        Sprite {
+            image_handle: asteroid_sprite_asset,
+            width: 0,
+            height: 0,
+        },
+    );
+    image_manager.images.insert(
+        ImageType::Bullet,
+        Sprite {
+            image_handle: bullet_sprite_asset,
+            width: 0,
+            height: 0,
+        },
+    );
+    image_manager.images.insert(
+        ImageType::Background,
+        Sprite {
+            image_handle: background_image_asset,
+            width: 0,
+            height: 0,
+        },
+    );
+}
+
+fn process_image_descriptor_system(
+    mut ev: EventReader<AssetEvent<Image>>,
+    assets: ResMut<Assets<Image>>,
+    mut image_manager: ResMut<ImageManager>,
+) {
+    for event in ev.read() {
+        match event {
+            AssetEvent::Added { id } => {
+                for image in image_manager.images.values_mut() {
+                    let image_id = image.image_handle.id();
+
+                    if image_id == *id {
+                        let texture = assets.get(image_id).unwrap();
+                        image.width = texture.texture_descriptor.size.width;
+                        image.height = texture.texture_descriptor.size.height;
+                    }
+                }
+            }
+            AssetEvent::Modified { id: _ } => (),
+            AssetEvent::Removed { id: _ } => (),
+            AssetEvent::LoadedWithDependencies { id: _ } => (),
+        }
+    }
 }
 
 fn main() {
@@ -412,13 +483,16 @@ fn main() {
 
     App::new()
         .add_plugins(DefaultPlugins)
-        .insert_resource::<ImageManager>(ImageManager { images: HashMap::new() })
+        .insert_resource::<ImageManager>(ImageManager {
+            images: HashMap::new(),
+        })
         .add_systems(PreStartup, load_assets_system)
         .add_systems(Startup, setup_system)
         .add_event::<CollisionEvent>()
         .add_systems(
             Update,
             (
+                process_image_descriptor_system,
                 player_move_system,
                 player_target_system,
                 player_shoot_system,
